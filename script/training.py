@@ -8,37 +8,26 @@ from PIL import Image
 import time
 from pathlib import Path
 import urllib
+from dataloader import ProductDataset
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from torch.nn.utils.rnn import pad_sequence
+
 
 rd = "D:/Amazon-ML-challenge/student_resource/"
 trainData = pd.read_csv(os.path.join(rd, "dataset/train.csv"))[:5]
 
-
-def create_placeholder_image(image_save_path):
-    try:
-        placeholder_image = Image.new('RGB', (100, 100), color='black')
-        placeholder_image.save(image_save_path)
-    except Exception as e:
-        return
+def collate_fn(batch):
+    images, targets, target_lengths = zip(*batch)
     
-
-def download_image(image_link, save_folder, retries=3, delay=3):
-    if not isinstance(image_link, str):
-        return
-
-    filename = Path(image_link).name
-    image_save_path = os.path.join(save_folder, filename)
-
-    if os.path.exists(image_save_path):
-        return
-
-    for _ in range(retries):
-        try:
-            urllib.request.urlretrieve(image_link, image_save_path)
-            return
-        except:
-            time.sleep(delay)
+    # Stack images (assuming images are tensors of shape [C, H, W])
+    images = torch.stack(images, 0)
     
-    create_placeholder_image(image_save_path) #Create a black placeholder image for invalid links/images
+    # Pad targets and create tensors for target_lengths
+    targets = pad_sequence(targets, batch_first=True, padding_value=0)  # Padding value 0 is assumed
+    target_lengths = torch.tensor(target_lengths, dtype=torch.long)
+    
+    return images, targets, target_lengths
 
 
 def train_crnn(model, train_loader, num_epochs=10):
@@ -65,11 +54,20 @@ def train_crnn(model, train_loader, num_epochs=10):
 
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader)}')
 
-
-print(trainData)
 # Example of loading dataset and training
-# from torch.utils.data import DataLoader
-# # Assuming your custom dataset that loads images and their labels
-# train_loader = DataLoader(custom_dataset, batch_size=32, shuffle=True)
-# model = CRNN(num_classes=NUM_CLASSES)
-# train_crnn(model, train_loader)
+
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+])
+
+rd = "D:/Amazon-ML-challenge/"
+
+character_map = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.']
+
+train_df = pd.read_csv(os.path.join(rd, "student_resource/dataset/train.csv"))[:5]
+train_dataset = ProductDataset(data=train_df, transform=transform)
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
+model = CRNN(num_classes=len(character_map))
+train_crnn(model, train_loader)
