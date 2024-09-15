@@ -14,7 +14,7 @@ from torchvision import transforms
 from torch.nn.utils.rnn import pad_sequence
 
 
-rd = "D:/Amazon-ML-challenge/student_resource/"
+rd = "student_resource"
 trainData = pd.read_csv(os.path.join(rd, "dataset/train.csv"))[:5]
 
 def collate_fn(batch):
@@ -31,7 +31,7 @@ def collate_fn(batch):
 
 
 def train_crnn(model, train_loader, num_epochs=10):
-    criterion = nn.CTCLoss(blank=0)  # blank token for CTC
+    criterion = nn.CTCLoss()  # blank token for CTC
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     for epoch in range(num_epochs):
@@ -42,10 +42,16 @@ def train_crnn(model, train_loader, num_epochs=10):
 
             # Forward pass
             outputs = model(images)  # Outputs shape: (sequence_length, batch_size, num_classes)
+            
+            log_probs = outputs.log_softmax(2).permute(1, 0, 2)  # (sequence_length, batch_size, num_classes)
+            input_lengths = torch.full(size=(outputs.size(0),), 
+                                       fill_value=outputs.size(1), 
+                                       dtype=torch.long)
+
 
             # Compute CTC loss
-            input_lengths = torch.full((images.size(0),), outputs.size(0), dtype=torch.long)  # Sequence length
-            loss = criterion(outputs, targets, input_lengths, target_lengths)
+            # input_lengths = torch.full((images.size(0),), outputs.size(0), dtype=torch.long)  # Sequence length
+            loss = criterion(log_probs, targets, input_lengths, target_lengths)
 
             # Backward pass and optimization
             loss.backward()
@@ -58,16 +64,18 @@ def train_crnn(model, train_loader, num_epochs=10):
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
+    transforms.Grayscale(num_output_channels=1),
     transforms.ToTensor(),
 ])
 
-rd = "D:/Amazon-ML-challenge/"
+rd = "student_resource"
 
 character_map = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.']
 
-train_df = pd.read_csv(os.path.join(rd, "student_resource/dataset/train.csv"))[:5]
+train_df = pd.read_csv(os.path.join(rd, "dataset/train.csv"))[:5]
 train_dataset = ProductDataset(data=train_df, transform=transform)
 
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
-model = CRNN(num_classes=len(character_map))
+model = CRNN(num_classes=len(character_map), input_channels=1)
 train_crnn(model, train_loader)
+
